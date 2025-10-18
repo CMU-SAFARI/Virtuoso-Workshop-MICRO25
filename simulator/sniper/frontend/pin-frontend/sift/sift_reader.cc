@@ -1,0 +1,1 @@
+/mnt/panzer/kanellok/virtuoso_workshop_part1.2/simulator/sniper/frontend/pin-frontend/../../sift/sift_reader.cc
