@@ -1,16 +1,5 @@
 
 
-## Overview
-
-In modern systems, memory is managed in units called pages. While 4KB pages are common, using larger pages (like 2MB Transparent Huge Pages) can improve performance by reducing the number of TLB (Translation Lookaside Buffer) misses and the overhead of page table walks.
-
-Virtuoso implements a sophisticated memory allocator, `ReservationTHPAllocator`, which can dynamically "promote" a 2MB region of memory that is currently being accessed as individual 4KB pages into a single 2MB huge page. This decision is based on two criteria:
-
-1.  **Utilization:** If a certain percentage of the 4KB pages within a 2MB virtual address range are being used, the region is promoted.
-2.  **Latency:** If the cumulative time spent on address translation for 4KB pages within a 2MB region exceeds a certain threshold, the region is promoted.
-
-This document focuses on the **latency-based promotion path**.
-
 ## The Promotion Workflow
 
 The process involves the Memory Management Unit (MMU) and the `ReservationTHPAllocator`. Here is a step-by-step breakdown:
