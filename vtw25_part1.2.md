@@ -335,6 +335,12 @@ Minor page faults handled by MimicOS enable simulating the overheads of page fau
 
 ## Let's run two experiments to see the performance overheads of MimicOS handling page faults:
 
+```bash
+# Experiment 1: Run with MimicOS handling page faults
+sh run_mimicos_part_1.2.1.sh
+# Experiment 2: Run without MimicOS handling page faults (baseline)
+sh run_baseline_part_1.2.1.sh
+```
 
 
 
@@ -353,3 +359,11 @@ This section describes how to offload page fault handling to a hardware fault ha
 
 
 
+## Let's run two experiments to see the performance of MimicOS with hardware fault handling:
+
+```bash
+# Experiment 1: Run with MimicOS using hardware fault handler
+sh run_mimicos_hwfaults_part_1.2.2.sh
+# Experiment 2: Run without hardware fault handler (baseline)
+sh run_mimicos_part_1.2.1.sh
+```
