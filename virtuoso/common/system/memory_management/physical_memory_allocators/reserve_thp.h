@@ -64,9 +64,13 @@ public:
         UInt64 two_mb_demoted;
         UInt64 total_allocations;
         UInt64 kernel_pages_used;
+        UInt64 promotion_caused_by_latency;
+        UInt64 promotion_caused_by_utilization;
     } stats;
 
     double (ReservationTHPAllocator::*frag_fun)();
+
+    bool enable_latency_aware_promotion;
 
     std::ofstream log_file;
     std::string log_file_name;

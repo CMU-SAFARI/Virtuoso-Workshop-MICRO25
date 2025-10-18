@@ -14,8 +14,6 @@
 #include "thread.h"
 #include "mimicos.h"
 #include <iostream>
-#include "virtuos_comm_allocator.h"
-#include "nic.h"
 
 MagicServer::MagicServer()
     : m_performance_enabled(false)

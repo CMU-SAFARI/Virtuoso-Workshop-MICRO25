@@ -4,10 +4,7 @@
 #include "simulator.h"
 #include "eager_paging.h"
 #include "config.hpp"
-
-// #include "revelator_allocator.h"
-// #include "mimicos_comm_allocator.h"
-// #include "physical_memory_allocator.h"
+#include "physical_memory_allocator.h"
 
 class AllocatorFactory
 {
@@ -51,14 +48,6 @@ public:
             int max_order = Sim()->getCfg()->getInt("perf_model/" + allocator_name + "/max_order");
             return new EagerPagingAllocator(allocator_name, memory_size, max_order, kernel_size, frag_type);
         }
-        // else if (allocator_type == "compaction"){
-        //     return new CompactionTHPAllocator(allocator_name, max_order, kernel_size, frag_type);
-        // }
-
-        // else if (allocator_type == "mimicos"){
-        //     return new MimicOSCommModule(allocator_name, max_order);
-        // }
-
         else
         {
             std::cout << "[Sniper] Allocator not found" << std::endl;

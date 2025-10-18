@@ -102,6 +102,8 @@ namespace ParametricDramDirectoryMSI
 		tlb_subsystem = new TLBHierarchy(name, core, memory_manager, shmem_perf_model);
 		l2_tlb_correct_prediction_latency = ComponentLatency(core->getDvfsDomain(), Sim()->getCfg()->getInt("perf_model/" + name + "/correct_prediction_latency")).getLatency();
 		l2_tlb_misprediction_latency = ComponentLatency(core->getDvfsDomain(), Sim()->getCfg()->getInt("perf_model/" + name + "/misprediction_latency")).getLatency();
+		page_size_prediction_enabled = Sim()->getCfg()->getBool("perf_model/" + name + "/page_size_prediction_enabled");
+		// @kanellok: Page Size Prediction hit latency logic for L2 TLB hits
 	}
 
 	void MemoryManagementUnit::registerMMUStats()
@@ -116,8 +118,10 @@ namespace ParametricDramDirectoryMSI
 		registerStatsMetric(name, core->getId(), "total_translation_latency", &translation_stats.total_translation_latency);
 		registerStatsMetric(name, core->getId(), "total_fault_latency", &translation_stats.total_fault_latency);
 
-		// This statistic can be used to compare it against the *.active counter which is exposed through performance counters in a real system
-		registerStatsMetric(name, core->getId(), "walker_is_active", &translation_stats.walker_is_active);
+		// Statistics for page size prediction
+		registerStatsMetric(name, core->getId(), "page_size_prediction_hits", &translation_stats.page_size_prediction_hits);
+		registerStatsMetric(name, core->getId(), "page_size_prediction_misses", &translation_stats.page_size_prediction_misses);
+
 
 		// Statistics for TLB subsystem
 		translation_stats.tlb_latency_per_level = new SubsecondTime[tlb_subsystem->getTLBSubsystem().size()];
@@ -170,68 +174,30 @@ namespace ParametricDramDirectoryMSI
 
 		bool hit = false;	 // Variables to keep track of TLB hits
 		TLB *hit_tlb = NULL; // We need to keep track of the TLB that hit
-
 		CacheBlockInfo *tlb_block_info_hit = NULL; // If there is a TLB hit, we need to keep track of the block info (which eventually contains the translation)
 		CacheBlockInfo *tlb_block_info = NULL;	   // This is the block info that we get from the TLB lookup
-
 		int hit_level = -1;
 		int page_size = -1; // This variable will reflect if the virtual address is mapped to a 4KB page or a 2MB page
-
 		IntPtr ppn_result = 0;
 
-		int predicted_page_size = -1;
-		int alternative_page_size = -1;
-		bool prediction_success = false;
+
+
 		// We iterate through the TLB hierarchy to find if there is a TLB hit
+	
+		//@kanellok: Get the page size prediction for the address
+		//We will be using this information to charge the correct latency for L2 TLB hits
+		
+		int predicted_page_size = -1;
+
+		if (page_size_prediction_enabled)
+			predicted_page_size = tlb_subsystem->predictPagesize(address);
+		
+
 		for (UInt32 i = 0; i < tlbs.size(); i++)
 		{
 #ifdef DEBUG_MMU
 			log_file << "[MMU] Searching TLB at level: " << i << std::endl;
 #endif
-			if (i == 1)
-			{
-
-				predicted_page_size = tlb_subsystem->predictPagesize(address);
-				alternative_page_size = (predicted_page_size == 12) ? 21 : 12;
-				// First lookup with predicted page size
-				for (UInt32 j = 0; j < tlbs[i].size(); j++)
-				{
-					if (tlbs[i][j]->supportsPageSize(predicted_page_size))
-					{
-						tlb_block_info = tlbs[i][j]->lookup(address, time, count, lock, eip, modeled, count, NULL);
-						if (tlb_block_info != NULL)
-						{
-							tlb_block_info_hit = tlb_block_info;
-							hit_tlb = tlbs[i][j];
-							hit_level = i;
-							hit = true;
-							prediction_success = true;
-							// Correct prediction and hit: charge low latency
-							break; // Found a hit
-						}
-					}
-				}
-
-				// If first lookup failed, try alternative page size
-				for (UInt32 j = 0; j < tlbs[i].size(); j++)
-				{
-					// Misprediction: charge high latency regardless of hit/miss
-					if (tlbs[i][j]->supportsPageSize(alternative_page_size))
-					{
-						tlb_block_info = tlbs[i][j]->lookup(address, time, count, lock, eip, modeled, count, NULL);
-						if (tlb_block_info != NULL)
-						{
-							tlb_block_info_hit = tlb_block_info;
-							hit_tlb = tlbs[i][j];
-							hit_level = i;
-							hit = true;
-							// No break here, we must set high latency for all L2 TLBs on mispredict
-						}
-					}
-				}
-
-				continue; // Move to next TLB level
-			}
 
 			for (UInt32 j = 0; j < tlbs[i].size(); j++)
 			{
@@ -249,6 +215,7 @@ namespace ParametricDramDirectoryMSI
 					{
 						tlb_block_info_hit = tlb_block_info;
 						hit_tlb = tlbs[i][j]; // Keep track of the TLB that hit
+						page_size = tlb_block_info_hit->getPageSize(); // We get the page size from the block info
 						hit_level = i;		  // Keep track of the level of the TLB that hit
 						hit = true;			  // We have a hit
 					}
@@ -263,6 +230,7 @@ namespace ParametricDramDirectoryMSI
 						{
 							tlb_block_info_hit = tlb_block_info;
 							hit_tlb = tlbs[i][j];
+							page_size = tlb_block_info_hit->getPageSize(); // We get the page size from the block info
 							hit_level = i;
 							hit = true;
 						}
@@ -336,12 +304,16 @@ namespace ParametricDramDirectoryMSI
 					log_file << "[MMU] Charging TLB Hit Latency: " << hit_tlb->getLatency() << " at level: " << hit_level << std::endl;
 #endif
 				}
+				// @kanellok: Page Size Prediction hit latency logic for L2 TLB hits
 				// Special latency calculation for L2 TLB (level 1) hits based on page size prediction.
-				else
+				else if (hit_level == 1 && page_size_prediction_enabled)
 				{
+					bool prediction_success = (predicted_page_size == page_size);
 					// If the page size prediction was correct, charge the lower latency.
 					if (prediction_success)
 					{
+						if (count)
+							translation_stats.page_size_prediction_hits++;
 						translation_stats.total_tlb_latency += l2_tlb_correct_prediction_latency;
 						charged_tlb_latency += l2_tlb_correct_prediction_latency;
 						translation_stats.tlb_latency_per_level[hit_level] += l2_tlb_correct_prediction_latency;
@@ -349,6 +321,8 @@ namespace ParametricDramDirectoryMSI
 					// If the page size prediction was incorrect, charge the higher misprediction penalty.
 					else
 					{
+						if (count)
+							translation_stats.page_size_prediction_misses++;
 						translation_stats.total_tlb_latency += l2_tlb_misprediction_latency;
 						charged_tlb_latency += l2_tlb_misprediction_latency;
 						translation_stats.tlb_latency_per_level[hit_level] += l2_tlb_misprediction_latency;

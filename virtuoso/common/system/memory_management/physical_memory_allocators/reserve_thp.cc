@@ -60,6 +60,7 @@ ReservationTHPAllocator::ReservationTHPAllocator(String name,
 	log_file.open(log_file_name);
 
 	log_file << "[MimicOS] Creating Reservation-based THP Allocator" << std::endl;
+
 	/* @ksgoura: The latency-based promotion mechanism for THP (Transparent Huge Pages) is designed
 	 * to decide when to promote a 2MB memory region from being managed as individual 4KB pages
 	 * to a single 2MB huge page. This is useful when a process frequently accesses different
@@ -73,7 +74,10 @@ ReservationTHPAllocator::ReservationTHPAllocator(String name,
 	 * the allocator will "promote" the entire region to a 2MB huge page. This is an alternative
 	 * to the utilization-based promotion, which only considers how many 4KB pages are in use.
 	 */
+
+	enable_latency_aware_promotion = Sim()->getCfg()->getBool("perf_model/" + name + "/enable_latency_aware_promotion");
 	promotion_threshold_latency4kb = SubsecondTime::NS(Sim()->getCfg()->getInt("perf_model/" + name + "/promotion_threshold_latency_ns")); // Default to 100ns
+	
 	// Initialize the stats counters
 	stats.four_kb_allocated = 0;
 	stats.two_mb_reserved = 0;
@@ -81,6 +85,8 @@ ReservationTHPAllocator::ReservationTHPAllocator(String name,
 	stats.two_mb_demoted = 0;
 	stats.total_allocations = 0;
 	stats.kernel_pages_used = 0;
+	stats.promotion_caused_by_latency = 0;
+	stats.promotion_caused_by_utilization = 0;
 
 	// Create a buddy allocator for fallback memory requests
 	buddy_allocator = new Buddy(memory_size, max_order, kernel_size, frag_type);
@@ -92,6 +98,9 @@ ReservationTHPAllocator::ReservationTHPAllocator(String name,
 	registerStatsMetric(name, 0, "two_mb_demoted", &stats.two_mb_demoted);
 	registerStatsMetric(name, 0, "total_allocations", &stats.total_allocations);
 	registerStatsMetric(name, 0, "kernel_pages_used", &stats.kernel_pages_used);
+	registerStatsMetric(name, 0, "promotion_caused_by_latency", &stats.promotion_caused_by_latency);
+	registerStatsMetric(name, 0, "promotion_caused_by_utilization", &stats.promotion_caused_by_utilization);
+
 }
 
 ReservationTHPAllocator::~ReservationTHPAllocator()
@@ -197,21 +206,25 @@ bool ReservationTHPAllocator::demote_page()
  * Or (-1, false) if no reservation could be made.
  */
 
-/*
+/* @ksgoura:
  * metadataUpdate(...):
  *   - This function is called to update the cumulative latency for 4KB page allocations
  *     within a specific 2MB region.
  *   - It takes the virtual address, calculates the corresponding 2MB region index,
  *     and adds the given latency_4kb to the total latency tracked for that region.
- *   - This is used to monitor how much time is spent on handling 4KB page faults,
- *     which informs the decision to promote the region to a 2MB huge page.
+ *   - This is used to monitor how much time is spent on handling the total translation latency of 4KB pages
+ *     occur within the 2MB region, which informs the decision to promote the region to a 2MB huge page.
  */
 void ReservationTHPAllocator::metadataUpdate(IntPtr address, SubsecondTime latency_4kb, UInt64 core_id)
 {
 	UInt64 region_2MB = address >> 21;
 
 	std::get<3>(two_mb_map[region_2MB]) += latency_4kb;
-	// std::cout << "Debug: Updated latency for 2MB region " << region_2MB << ": " << std::get<3>(two_mb_map[region_2MB]).getNS() << std::endl;
+
+	// @ksgoura:
+	// Exploration: For the sake of simplicity, we log the cumulative latency without quantizing.
+	// In a practical implementation, you want to quantize this value to be able to pack it inside the 
+	// page table entry or a metadata table entry.
 }
 std::pair<UInt64, bool> ReservationTHPAllocator::checkFor2MBAllocation(UInt64 address, UInt64 core_id)
 {
@@ -323,7 +336,28 @@ std::pair<UInt64, bool> ReservationTHPAllocator::checkFor2MBAllocation(UInt64 ad
 		 * even if the memory usage itself is not very high.
 		 */
 		// If utilization exceeds the threshold, we "promote" the entire region as a huge page
-		bool ready_to_promote = (utilization > threshold_for_promotion) || (latency_4kb > promotion_threshold_latency4kb);
+		bool ready_to_promote = false;
+
+		if (enable_latency_aware_promotion){
+			
+			ready_to_promote = (utilization > threshold_for_promotion) || (latency_4kb > promotion_threshold_latency4kb);
+			
+			if (ready_to_promote){
+				if (latency_4kb > promotion_threshold_latency4kb)
+					stats.promotion_caused_by_latency++;
+				else
+					stats.promotion_caused_by_utilization++;
+			}
+			// std::cout << "Promotion caused by latency: " << stats.promotion_caused_by_latency << "\n";
+		}
+		else{
+
+			ready_to_promote = (utilization > threshold_for_promotion);
+			if (ready_to_promote){
+				stats.promotion_caused_by_utilization++;
+			}
+		}
+
 		// std::cout << "Ready to promote " << ready_to_promote << "\n";
 		if (ready_to_promote && !std::get<2>(region))
 		{
@@ -335,7 +369,7 @@ std::pair<UInt64, bool> ReservationTHPAllocator::checkFor2MBAllocation(UInt64 ad
 					 << stats.two_mb_promoted << std::endl;
 #endif
 			// Return the physical address for the offset_in_2MB, but note that we "just promoted"
-			return std::make_pair(std::get<0>(region) + offset_in_2MB, true);
+			return std::make_pair(std::get<0>(region), true);
 		}
 		else
 		{

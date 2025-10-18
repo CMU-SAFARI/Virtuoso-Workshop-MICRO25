@@ -21,7 +21,7 @@ namespace ParametricDramDirectoryMSI
 	int PageSizePredictor::predictPageSize(IntPtr virtual_address)
 	{
 		/*
-			@kanellok "" Lab 4: Add your prediction logic here.
+			@kanellok: Add your prediction logic here.
 			Make sure you return the predicted page size in "bits".
 			For example 12 for 4KB pages and 21 for 2MB pages.
 		*/
@@ -34,7 +34,7 @@ namespace ParametricDramDirectoryMSI
 	void PageSizePredictor::update(IntPtr virtual_address, int page_size)
 	{
 		/*
-			@kanellok "" Lab 4: Add your update logic here.
+			@kanellok: Add your update logic here.
 			This function should be called after a memory access to update the predictor state.
 			You can use this function to adjust the prediction based on the actual page size used.
 		*/

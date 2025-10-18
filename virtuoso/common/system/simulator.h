@@ -5,7 +5,6 @@
 #include "log.h"
 #include "inst_mode.h"
 #include <decoder.h>
-#include "nic.h"
 
 
 class _Thread;

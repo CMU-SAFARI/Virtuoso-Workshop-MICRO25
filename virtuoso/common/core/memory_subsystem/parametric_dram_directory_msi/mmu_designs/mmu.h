@@ -29,6 +29,7 @@ namespace ParametricDramDirectoryMSI
 		bool m_pwc_enabled;
 		int max_pwc_level;
 
+		bool page_size_prediction_enabled;
 		SubsecondTime l2_tlb_correct_prediction_latency;
 		SubsecondTime l2_tlb_misprediction_latency;
 
@@ -41,6 +42,8 @@ namespace ParametricDramDirectoryMSI
 			UInt64 num_translations;
 			UInt64 page_faults;
 			UInt64 page_table_walks;
+			UInt64 page_size_prediction_hits;
+			UInt64 page_size_prediction_misses;
 			SubsecondTime total_walk_latency;
 			SubsecondTime total_translation_latency;
 			SubsecondTime total_tlb_latency;
