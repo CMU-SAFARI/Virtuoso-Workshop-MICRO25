@@ -8,7 +8,7 @@
 CONFIG_FILE=./config/virtuoso_configs/virtuoso_reservethp
 
 # Path to your executable
-WORKLOAD=ls
+WORKLOAD=./traces/rnd.sift
 
 # ------------------------------------------------------------
 # Parameters for the Sniper simulator
@@ -21,7 +21,7 @@ WORKLOAD=ls
 # TRACE can be specified if needed, e.g., --traces=./traces/name.sift
 # We are going to be using traces as they can be executed faster than real workloads.
 
-./run-sniper -c $CONFIG_FILE -d ./example_output --genstats -s stop-by-icount:1000000 -- $WORKLOAD 
+./run-sniper -c $CONFIG_FILE -d ./example_output --genstats -s stop-by-icount:4000000 --traces=$WORKLOAD
 
 
 #Check if the command was successful by looking for sim.stats in the output directory

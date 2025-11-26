@@ -331,7 +331,7 @@ namespace ParametricDramDirectoryMSI
          HitWhere::where_t processShmemReqFromPrevCache(IntPtr eip, CacheCntlr* requester, Core::mem_op_t mem_op_type, IntPtr address, bool modeled, bool count,CacheBlockInfo::block_type_t block_type,  Prefetch::prefetch_type_t isPrefetch, SubsecondTime t_issue, bool have_write_lock, Core::mem_origin_t mem_origin);
 
          // Process Request from L1 Cache
-         boost::tuple<HitWhere::where_t, SubsecondTime> accessDRAM(Core::mem_op_t mem_op_type, IntPtr address, bool isPrefetch, Byte* data_buf,bool metadata_request);
+        boost::tuple<HitWhere::where_t, SubsecondTime> accessDRAM(Core::mem_op_t mem_op_type, IntPtr address, bool isPrefetch, Byte* data_buf, CacheBlockInfo::block_type_t block_type);
          void initiateDirectoryAccess(Core::mem_op_t mem_op_type, IntPtr address, CacheBlockInfo::block_type_t block_type,bool isPrefetch, SubsecondTime t_issue);
          void processExReqToDirectory(IntPtr address,CacheBlockInfo::block_type_t block_type);
          void processShReqToDirectory(IntPtr address,CacheBlockInfo::block_type_t block_type);

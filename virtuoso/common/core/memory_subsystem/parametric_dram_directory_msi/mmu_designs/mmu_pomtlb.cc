@@ -648,7 +648,7 @@ namespace ParametricDramDirectoryMSI
 		else
 			tlbs = tlb_subsystem->getDataPath();
 
-		std::map<int, vector<tuple<IntPtr, int>>> evicted_translations;
+		std::map<int, vector<tuple<IntPtr, int, IntPtr>>> evicted_translations;
 		int tlb_levels = tlbs.size();
 
 		// Some TLB hierarchies might have a "prefetch" TLB, skipping the last level for 
@@ -670,7 +670,7 @@ namespace ParametricDramDirectoryMSI
 				// If there's any "evicted" translation from the previous level, we attempt to place it here
 				if ((i > 0) && (!evicted_translations[i - 1].empty()))
 				{
-					tuple<bool, IntPtr, int> result;
+					auto result = std::make_tuple(false, IntPtr(0), 0, IntPtr(0));
 
 #ifdef DEBUG_MMU
 					log_file << "[MMU] There are evicted translations from level: " << (i - 1) << std::endl;
@@ -680,19 +680,21 @@ namespace ParametricDramDirectoryMSI
 #ifdef DEBUG_MMU
 						log_file << "[MMU] Evicted Translation: " << get<0>(evicted) << std::endl;
 #endif
-						if (tlbs[i][j]->supportsPageSize(page_size_result))
+						int evicted_page_size = get<1>(evicted);
+						IntPtr evicted_ppn = get<2>(evicted);
+						if (tlbs[i][j]->supportsPageSize(evicted_page_size))
 						{
 #ifdef DEBUG_MMU
 							log_file << "[MMU] Allocating evicted entry in TLB: Level = "
 							         << i << " Index =  " << j << std::endl;
 #endif
 							result = tlbs[i][j]->allocate(get<0>(evicted), time, count, lock,
-							                              get<1>(evicted), ppn_result);
+							                              evicted_page_size, evicted_ppn);
 
 							if (get<0>(result) == true)
 							{
 								evicted_translations[i].push_back(
-									make_tuple(get<1>(result), get<2>(result)));
+									make_tuple(get<1>(result), get<2>(result), get<3>(result)));
 							}
 						}
 					}
@@ -716,7 +718,7 @@ namespace ParametricDramDirectoryMSI
 					if (get<0>(result) == true)
 					{
 						evicted_translations[i].push_back(
-							make_tuple(get<1>(result), get<2>(result)));
+							make_tuple(get<1>(result), get<2>(result), get<3>(result)));
 					}
 				}
 			}

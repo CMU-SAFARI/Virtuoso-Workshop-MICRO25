@@ -70,6 +70,7 @@ namespace ParametricDramDirectoryMSI
 		String page_table_type = Sim()->getCfg()->getString("perf_model/" + mimicos_name + "/page_table_type");
 		String page_table_name = Sim()->getCfg()->getString("perf_model/" + mimicos_name + "/page_table_name");
 
+
 		if (page_table_type == "radix")
 		{
 			max_pwc_level = Sim()->getCfg()->getInt("perf_model/" + name + "/pwc/levels");
@@ -93,15 +94,18 @@ namespace ParametricDramDirectoryMSI
 				pwc = new PWC("pwc", "perf_model/" + name + "/pwc", core->getId(), associativities, entries, max_pwc_level, pwc_access_latency, pwc_miss_latency, false);
 			}
 		}
-
+		// Model the contention of the page table walkers using MSHRs
 		pt_walkers = new MSHR(Sim()->getCfg()->getInt("perf_model/" + name + "/page_table_walkers"));
 	}
 
 	void MemoryManagementUnit::instantiateTLBSubsystem()
 	{
 		tlb_subsystem = new TLBHierarchy(name, core, memory_manager, shmem_perf_model);
+
+		// @kanellok: Page Size Prediction parameters
 		l2_tlb_correct_prediction_latency = ComponentLatency(core->getDvfsDomain(), Sim()->getCfg()->getInt("perf_model/" + name + "/correct_prediction_latency")).getLatency();
 		l2_tlb_misprediction_latency = ComponentLatency(core->getDvfsDomain(), Sim()->getCfg()->getInt("perf_model/" + name + "/misprediction_latency")).getLatency();
+		
 		page_size_prediction_enabled = Sim()->getCfg()->getBool("perf_model/" + name + "/page_size_prediction_enabled");
 		// @kanellok: Page Size Prediction hit latency logic for L2 TLB hits
 	}
@@ -323,6 +327,7 @@ namespace ParametricDramDirectoryMSI
 					{
 						if (count)
 							translation_stats.page_size_prediction_misses++;
+						
 						translation_stats.total_tlb_latency += l2_tlb_misprediction_latency;
 						charged_tlb_latency += l2_tlb_misprediction_latency;
 						translation_stats.tlb_latency_per_level[hit_level] += l2_tlb_misprediction_latency;
@@ -401,6 +406,8 @@ namespace ParametricDramDirectoryMSI
 
 			// returns PTW latency, PF latency, Physical Address, Page Size as a tuple
 			int app_id = core->getThread()->getAppId();
+		
+			//Equivalent of the CR3 register in x86
 			PageTable *page_table = Sim()->getMimicOS()->getPageTable(app_id);
 
 			const bool restart_walk_upon_page_fault = false;
@@ -410,6 +417,7 @@ namespace ParametricDramDirectoryMSI
 #endif
 
 			auto ptw_result = performPTW(address, modeled, count, false, eip, lock, page_table, restart_walk_upon_page_fault);
+			
 			total_walk_latency = get<0>(ptw_result); // Total walk latency is only the time it takes to walk the page table (excluding page faults)
 
 #ifdef DEBUG_MMU
@@ -439,6 +447,7 @@ namespace ParametricDramDirectoryMSI
 				}
 				total_fault_latency = m_page_fault_latency;
 
+				// There is no way that this will lead to a page fault
 				auto restarted_ptw_result = performPTW(address, modeled, count, true, eip, lock, page_table, false);
 
 				total_walk_latency += get<0>(restarted_ptw_result);
@@ -510,7 +519,7 @@ namespace ParametricDramDirectoryMSI
 		else
 			tlbs = tlb_subsystem->getDataPath();
 
-		std::map<int, vector<tuple<IntPtr, int>>> evicted_translations;
+		std::map<int, vector<tuple<IntPtr, int, IntPtr>>> evicted_translations;
 
 		// We need to allocate the entry in every "allocate on miss" TLB
 
@@ -533,7 +542,7 @@ namespace ParametricDramDirectoryMSI
 				// We need to check if there are any evicted translations from the previous level and allocate them
 				if ((i > 0) && (evicted_translations[i - 1].size() != 0))
 				{
-					tuple<bool, IntPtr, int> result;
+					auto result = std::make_tuple(false, IntPtr(0), 0, IntPtr(0));
 
 #ifdef DEBUG_MMU
 					log_file << "[MMU] There are evicted translations from level: " << i - 1 << std::endl;
@@ -545,22 +554,23 @@ namespace ParametricDramDirectoryMSI
 						log_file << "[MMU] Evicted Translation: " << get<0>(evicted_translations[i - 1][k]) << std::endl;
 #endif
 						// We need to check if the TLB supports the page size of the evicted translation
-						if (tlbs[i][j]->supportsPageSize(page_size))
+						int evicted_page_size = get<1>(evicted_translations[i - 1][k]);
+						IntPtr evicted_ppn = get<2>(evicted_translations[i - 1][k]);
+						if (tlbs[i][j]->supportsPageSize(evicted_page_size))
 						{
 #ifdef DEBUG_MMU
 
-							log_file << "[MMU] " << tlbs[i][j]->getName() << " supports page size: " << page_size << std::endl;
-							log_file << "[MMU] Allocating in TLB: Level = " << i << " Index = " << j << " with page size: " << page_size << " and VPN: " << (get<0>(evicted_translations[i - 1][k]) >> page_size) << std::endl;
+							log_file << "[MMU] " << tlbs[i][j]->getName() << " supports page size: " << evicted_page_size << std::endl;
+							log_file << "[MMU] Allocating in TLB: Level = " << i << " Index = " << j << " with page size: " << evicted_page_size << " and VPN: " << (get<0>(evicted_translations[i - 1][k]) >> evicted_page_size) << std::endl;
 #endif
-
-							result = tlbs[i][j]->allocate(get<0>(evicted_translations[i - 1][k]), time, count, lock, get<1>(evicted_translations[i - 1][k]), ppn_result);
+							result = tlbs[i][j]->allocate(get<0>(evicted_translations[i - 1][k]), time, count, lock, evicted_page_size, evicted_ppn);
 
 							// If the allocation was successful and we have an evicted translation,
 							// we need to add it to the evicted translations vector for
 
 							if (get<0>(result) == true)
 							{
-								evicted_translations[i].push_back(make_tuple(get<1>(result), get<2>(result)));
+								evicted_translations[i].push_back(make_tuple(get<1>(result), get<2>(result), get<3>(result)));
 							}
 						}
 					}
@@ -578,12 +588,10 @@ namespace ParametricDramDirectoryMSI
 					log_file << "[MMU] " << tlbs[i][j]->getName() << " supports page size: " << page_size << std::endl;
 					log_file << "[MMU] Allocating in TLB: Level = " << i << " Index = " << j << " with page size: " << page_size << " and VPN: " << (address >> page_size) << std::endl;
 #endif
-					tuple<bool, IntPtr, int> result;
-
-					result = tlbs[i][j]->allocate(address, time, count, lock, page_size, ppn_result);
+					auto result = tlbs[i][j]->allocate(address, time, count, lock, page_size, ppn_result);
 					if (get<0>(result) == true)
 					{
-						evicted_translations[i].push_back(make_tuple(get<1>(result), get<2>(result)));
+						evicted_translations[i].push_back(make_tuple(get<1>(result), get<2>(result), get<3>(result)));
 					}
 				}
 			}

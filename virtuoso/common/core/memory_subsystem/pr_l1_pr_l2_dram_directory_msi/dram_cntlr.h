@@ -46,7 +46,7 @@ namespace PrL1PrL2DramDirectoryMSI
          DramPerfModel* getDramPerfModel() { return m_dram_perf_model; }
 
          // Run DRAM performance model. Pass in begin time, returns latency
-         boost::tuple<SubsecondTime, HitWhere::where_t> getDataFromDram(IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now, ShmemPerf *perf,bool is_matadata);
-         boost::tuple<SubsecondTime, HitWhere::where_t> putDataToDram(IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now,bool is_matadata);
+         boost::tuple<SubsecondTime, HitWhere::where_t> getDataFromDram(IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now, ShmemPerf *perf, CacheBlockInfo::block_type_t block_type);
+         boost::tuple<SubsecondTime, HitWhere::where_t> putDataToDram(IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now, CacheBlockInfo::block_type_t block_type);
    };
 }

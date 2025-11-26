@@ -5,6 +5,7 @@
 #include "subsecond_time.h"
 #include "hit_where.h"
 #include "shmem_msg.h"
+#include "cache_block_info.h"
 
 #include "boost/tuple/tuple.hpp"
 
@@ -18,6 +19,16 @@ class DramCntlrInterface
       MemoryManagerBase* m_memory_manager;
       ShmemPerfModel* m_shmem_perf_model;
       UInt32 m_cache_block_size;
+
+      static bool isMetadataBlock(CacheBlockInfo::block_type_t block_type)
+      {
+         return block_type == CacheBlockInfo::block_type_t::PAGE_TABLE ||
+                block_type == CacheBlockInfo::block_type_t::PAGE_TABLE_PASSTHROUGH ||
+                block_type == CacheBlockInfo::block_type_t::SECURITY ||
+                block_type == CacheBlockInfo::block_type_t::EXPRESSIVE ||
+                block_type == CacheBlockInfo::block_type_t::TLB_ENTRY ||
+                block_type == CacheBlockInfo::block_type_t::TLB_ENTRY_PASSTHROUGH;
+      }
 
       UInt32 getCacheBlockSize() { return m_cache_block_size; }
       MemoryManagerBase* getMemoryManager() { return m_memory_manager; }
@@ -38,8 +49,8 @@ class DramCntlrInterface
       {}
       virtual ~DramCntlrInterface() {}
 
-      virtual boost::tuple<SubsecondTime, HitWhere::where_t> getDataFromDram(IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now, ShmemPerf *perf,bool is_matadata) = 0;
-      virtual boost::tuple<SubsecondTime, HitWhere::where_t> putDataToDram(IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now,bool is_matadata) = 0;
+      virtual boost::tuple<SubsecondTime, HitWhere::where_t> getDataFromDram(IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now, ShmemPerf *perf, CacheBlockInfo::block_type_t block_type) = 0;
+      virtual boost::tuple<SubsecondTime, HitWhere::where_t> putDataToDram(IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now, CacheBlockInfo::block_type_t block_type) = 0;
 
       void handleMsgFromTagDirectory(core_id_t sender, PrL1PrL2DramDirectoryMSI::ShmemMsg* shmem_msg);
 };

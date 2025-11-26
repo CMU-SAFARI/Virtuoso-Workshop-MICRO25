@@ -52,8 +52,9 @@ DramCntlr::~DramCntlr()
 }
 
 boost::tuple<SubsecondTime, HitWhere::where_t>
-DramCntlr::getDataFromDram(IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now, ShmemPerf *perf,bool is_metadata)
+DramCntlr::getDataFromDram(IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now, ShmemPerf *perf, CacheBlockInfo::block_type_t block_type)
 {
+   bool is_metadata = isMetadataBlock(block_type);
    if (Sim()->getFaultinjectionManager())
    {
       if (m_data_map.count(address) == 0)
@@ -68,7 +69,7 @@ DramCntlr::getDataFromDram(IntPtr address, core_id_t requester, Byte* data_buf, 
 
       memcpy((void*) data_buf, (void*) m_data_map[address], getCacheBlockSize());
    }
-   SubsecondTime dram_access_latency = runDramPerfModel(requester, now, address, READ, perf,is_metadata);
+   SubsecondTime dram_access_latency = runDramPerfModel(requester, now, address, READ, perf, is_metadata);
 
    ++m_reads;
    #ifdef ENABLE_DRAM_ACCESS_COUNT
@@ -80,8 +81,9 @@ DramCntlr::getDataFromDram(IntPtr address, core_id_t requester, Byte* data_buf, 
 }
 
 boost::tuple<SubsecondTime, HitWhere::where_t>
-DramCntlr::putDataToDram(IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now,bool is_metadata)
+DramCntlr::putDataToDram(IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now, CacheBlockInfo::block_type_t block_type)
 {
+   bool is_metadata = isMetadataBlock(block_type);
    if (Sim()->getFaultinjectionManager())
    {
       if (m_data_map[address] == NULL)
@@ -94,7 +96,7 @@ DramCntlr::putDataToDram(IntPtr address, core_id_t requester, Byte* data_buf, Su
       if (m_fault_injector)
          m_fault_injector->postWrite(address, address, getCacheBlockSize(), (Byte*)m_data_map[address], now);
    }
-   SubsecondTime dram_access_latency = runDramPerfModel(requester, now, address, WRITE, &m_dummy_shmem_perf,is_metadata);
+   SubsecondTime dram_access_latency = runDramPerfModel(requester, now, address, WRITE, &m_dummy_shmem_perf, is_metadata);
 
    ++m_writes;
    #ifdef ENABLE_DRAM_ACCESS_COUNT

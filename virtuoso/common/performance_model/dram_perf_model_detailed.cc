@@ -367,8 +367,10 @@ void DramPerfModelDetailed::printInterval(std::priority_queue<IntervalNode> inte
 
 
 SubsecondTime
-DramPerfModelDetailed::getAccessLatency(SubsecondTime pkt_time, UInt64 pkt_size, core_id_t requester, IntPtr address, DramCntlrInterface::access_t access_type, ShmemPerf *perf,bool is_metadata)
+DramPerfModelDetailed::getAccessLatency(SubsecondTime pkt_time, UInt64 pkt_size, core_id_t requester, IntPtr address, DramCntlrInterface::access_t access_type, ShmemPerf *perf, bool is_metadata)
 {
+
+
    UInt64 phys_page =  address & ~((UInt64(1) << 12) - 1); //Assuming 4K page 
 
    UInt64 cacheline =  address & ~((UInt64(1) << 6) - 1); //Assuming 4K page 

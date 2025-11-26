@@ -102,6 +102,16 @@ namespace ParametricDramDirectoryMSI
 		}
 	}
 
+	static inline bool isMetadataRequest(CacheBlockInfo::block_type_t block_type)
+	{
+		return (block_type == CacheBlockInfo::block_type_t::PAGE_TABLE) ||
+			   (block_type == CacheBlockInfo::block_type_t::PAGE_TABLE_PASSTHROUGH) ||
+			   (block_type == CacheBlockInfo::block_type_t::SECURITY) ||
+			   (block_type == CacheBlockInfo::block_type_t::EXPRESSIVE) ||
+			   (block_type == CacheBlockInfo::block_type_t::TLB_ENTRY) ||
+			   (block_type == CacheBlockInfo::block_type_t::TLB_ENTRY_PASSTHROUGH);
+	}
+
 	const char *ReasonString(Transition::reason_t reason)
 	{
 		switch (reason)
@@ -422,7 +432,8 @@ namespace ParametricDramDirectoryMSI
 
 		HitWhere::where_t hit_where = HitWhere::MISS;
 
-		bool metadata_request = (block_type == CacheBlockInfo::block_type_t::PAGE_TABLE) || (block_type == CacheBlockInfo::block_type_t::PAGE_TABLE_PASSTHROUGH) || (block_type == CacheBlockInfo::block_type_t::SECURITY) || (block_type == CacheBlockInfo::block_type_t::EXPRESSIVE) || (block_type == CacheBlockInfo::block_type_t::TLB_ENTRY) || (block_type == CacheBlockInfo::block_type_t::TLB_ENTRY_PASSTHROUGH);
+		bool metadata_request = isMetadataRequest(block_type);
+
 
 		#ifdef CACHE_DEBUG
 			std::cout << "Cache received a memory request of type: " << mem_op_type << " at address: " << ca_address <<  " at time " << getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD) << std::endl;
@@ -1050,12 +1061,7 @@ namespace ParametricDramDirectoryMSI
 		bool have_write_lock_internal = true;
 #endif
 		// std:: cout << "Block type = " << block_type << std::endl;
-		bool metadata_request = (block_type == CacheBlockInfo::block_type_t::PAGE_TABLE) ||
-								(block_type == CacheBlockInfo::block_type_t::PAGE_TABLE_PASSTHROUGH) ||
-								(block_type == CacheBlockInfo::block_type_t::SECURITY) ||
-								(block_type == CacheBlockInfo::block_type_t::EXPRESSIVE) ||
-								(block_type == CacheBlockInfo::block_type_t::TLB_ENTRY) ||
-								(block_type == CacheBlockInfo::block_type_t::TLB_ENTRY_PASSTHROUGH);
+		bool metadata_request = isMetadataRequest(block_type);
 
 		bool cache_hit = operationPermissibleinCache(address, mem_op_type), sibling_hit = false, prefetch_hit = false;
 		bool first_hit = cache_hit;
@@ -1308,7 +1314,7 @@ namespace ParametricDramDirectoryMSI
 						SubsecondTime latency;
 
 						// Do the DRAM access and increment local time
-						boost::tie<HitWhere::where_t, SubsecondTime>(hit_where, latency) = accessDRAM(Core::READ, address, isPrefetch != Prefetch::NONE, data_buf, metadata_request);
+						boost::tie<HitWhere::where_t, SubsecondTime>(hit_where, latency) = accessDRAM(Core::READ, address, isPrefetch != Prefetch::NONE, data_buf, block_type);
 						getMemoryManager()->incrElapsedTime(latency, ShmemPerfModel::_USER_THREAD);
 
 						// Insert the line. Be sure to use SHARED/MODIFIED as appropriate (upgrades are free anyway), we don't want to have to write back clean lines
@@ -1432,10 +1438,10 @@ namespace ParametricDramDirectoryMSI
 	}
 
 	boost::tuple<HitWhere::where_t, SubsecondTime>
-	CacheCntlr::accessDRAM(Core::mem_op_t mem_op_type, IntPtr address, bool isPrefetch, Byte *data_buf, bool metadata_request)
+	CacheCntlr::accessDRAM(Core::mem_op_t mem_op_type, IntPtr address, bool isPrefetch, Byte *data_buf, CacheBlockInfo::block_type_t block_type)
 	{
 		ScopedLock sl(getLock()); // DRAM is shared and owned by m_master
-		// std::cout<<metadata_request<<"\n";
+		bool metadata_request = isMetadataRequest(block_type);
 		SubsecondTime t_issue = getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_USER_THREAD);
 		SubsecondTime dram_latency;
 		HitWhere::where_t hit_where;
@@ -1443,12 +1449,12 @@ namespace ParametricDramDirectoryMSI
 		switch (mem_op_type)
 		{
 		case Core::READ:
-			boost::tie(dram_latency, hit_where) = m_master->m_dram_cntlr->getDataFromDram(address, m_core_id_master, data_buf, t_issue, m_shmem_perf, metadata_request);
+			boost::tie(dram_latency, hit_where) = m_master->m_dram_cntlr->getDataFromDram(address, m_core_id_master, data_buf, t_issue, m_shmem_perf, block_type);
 			break;
 
 		case Core::READ_EX:
 		case Core::WRITE:
-			boost::tie(dram_latency, hit_where) = m_master->m_dram_cntlr->putDataToDram(address, m_core_id_master, data_buf, t_issue, metadata_request);
+			boost::tie(dram_latency, hit_where) = m_master->m_dram_cntlr->putDataToDram(address, m_core_id_master, data_buf, t_issue, block_type);
 			break;
 
 		default:
@@ -2735,4 +2741,3 @@ namespace ParametricDramDirectoryMSI
 	}
 
 }
-

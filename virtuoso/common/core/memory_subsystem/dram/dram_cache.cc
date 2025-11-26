@@ -73,9 +73,9 @@ DramCache::~DramCache()
 }
 
 boost::tuple<SubsecondTime, HitWhere::where_t>
-DramCache::getDataFromDram(IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now, ShmemPerf *perf,bool is_matadata)
+DramCache::getDataFromDram(IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now, ShmemPerf *perf, CacheBlockInfo::block_type_t block_type)
 {
-   std::pair<bool, SubsecondTime> res = doAccess(Cache::LOAD, address, requester, data_buf, now, perf);
+   std::pair<bool, SubsecondTime> res = doAccess(Cache::LOAD, address, requester, data_buf, now, perf, block_type);
 
    if (!res.first)
       ++m_read_misses;
@@ -85,9 +85,9 @@ DramCache::getDataFromDram(IntPtr address, core_id_t requester, Byte* data_buf, 
 }
 
 boost::tuple<SubsecondTime, HitWhere::where_t>
-DramCache::putDataToDram(IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now,bool is_matadata)
+DramCache::putDataToDram(IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now, CacheBlockInfo::block_type_t block_type)
 {
-   std::pair<bool, SubsecondTime> res = doAccess(Cache::STORE, address, requester, data_buf, now, NULL);
+   std::pair<bool, SubsecondTime> res = doAccess(Cache::STORE, address, requester, data_buf, now, NULL, block_type);
 
    if (!res.first)
       ++m_write_misses;
@@ -97,7 +97,7 @@ DramCache::putDataToDram(IntPtr address, core_id_t requester, Byte* data_buf, Su
 }
 
 std::pair<bool, SubsecondTime>
-DramCache::doAccess(Cache::access_t access, IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now, ShmemPerf *perf)
+DramCache::doAccess(Cache::access_t access, IntPtr address, core_id_t requester, Byte* data_buf, SubsecondTime now, ShmemPerf *perf, CacheBlockInfo::block_type_t block_type)
 {
    PrL1CacheBlockInfo* block_info = (PrL1CacheBlockInfo*)m_cache->peekSingleLine(address);
    SubsecondTime latency = m_tags_access_time;
@@ -138,7 +138,7 @@ DramCache::doAccess(Cache::access_t access, IntPtr address, core_id_t requester,
          // For LOADs, get data from DRAM
          SubsecondTime dram_latency;
          HitWhere::where_t hit_where;
-         boost::tie(dram_latency, hit_where) = m_dram_cntlr->getDataFromDram(address, requester, data_buf, now + latency, perf,false);
+         boost::tie(dram_latency, hit_where) = m_dram_cntlr->getDataFromDram(address, requester, data_buf, now + latency, perf, block_type);
          latency += dram_latency;
       }
          // For STOREs, we only do complete cache lines so we don't need to read from DRAM
@@ -171,7 +171,7 @@ DramCache::insertLine(Cache::access_t access, IntPtr address, core_id_t requeste
    // Writeback to DRAM done off-line, so don't affect return latency
    if (eviction && evict_block_info.getCState() == CacheState::MODIFIED)
    {
-      m_dram_cntlr->putDataToDram(evict_address, requester, data_buf, now,false);
+      m_dram_cntlr->putDataToDram(evict_address, requester, data_buf, now, evict_block_info.getBlockType());
    }
 }
 
@@ -217,7 +217,7 @@ DramCache::callPrefetcher(IntPtr train_address, bool cache_hit, bool prefetch_hi
             SubsecondTime dram_latency;
             HitWhere::where_t hit_where;
             Byte data_buf[m_cache_block_size];
-            boost::tie(dram_latency, hit_where) = m_dram_cntlr->getDataFromDram(prefetch_address, m_core_id, data_buf, t_issue, NULL,false);
+            boost::tie(dram_latency, hit_where) = m_dram_cntlr->getDataFromDram(prefetch_address, m_core_id, data_buf, t_issue, NULL, CacheBlockInfo::block_type_t::NON_PAGE_TABLE);
             // Insert into data array
             insertLine(Cache::LOAD, prefetch_address, m_core_id, data_buf, t_issue + dram_latency);
             // Set prefetched bit

@@ -18,14 +18,13 @@ void DramCntlrInterface::handleMsgFromTagDirectory(core_id_t sender, PrL1PrL2Dra
          Byte data_buf[getCacheBlockSize()];
          SubsecondTime dram_latency;
          HitWhere::where_t hit_where;
-         boost::tie(dram_latency, hit_where) = getDataFromDram(address, shmem_msg->getRequester(), data_buf, msg_time, shmem_msg->getPerf(),shmem_msg->getBlockType());
+         CacheBlockInfo::block_type_t block_type = shmem_msg->getBlockType();
+         boost::tie(dram_latency, hit_where) = getDataFromDram(address, shmem_msg->getRequester(), data_buf, msg_time, shmem_msg->getPerf(), block_type);
 
          getShmemPerfModel()->incrElapsedTime(dram_latency, ShmemPerfModel::_SIM_THREAD);
 
          shmem_msg->getPerf()->updateTime(getShmemPerfModel()->getElapsedTime(ShmemPerfModel::_SIM_THREAD),
             hit_where == HitWhere::DRAM_CACHE ? ShmemPerf::DRAM_CACHE : ShmemPerf::DRAM);
-
-         CacheBlockInfo::block_type_t block_type = shmem_msg->getBlockType();
 
          getMemoryManager()->sendMsg(PrL1PrL2DramDirectoryMSI::ShmemMsg::DRAM_READ_REP,
                MemComponent::DRAM, MemComponent::TAG_DIR,
@@ -33,7 +32,7 @@ void DramCntlrInterface::handleMsgFromTagDirectory(core_id_t sender, PrL1PrL2Dra
                sender /* receiver */,
                address,
                data_buf, getCacheBlockSize(),
-               hit_where, shmem_msg->getPerf(), ShmemPerfModel::_SIM_THREAD,block_type);
+               hit_where, shmem_msg->getPerf(), ShmemPerfModel::_SIM_THREAD, block_type);
          break;
       }
 

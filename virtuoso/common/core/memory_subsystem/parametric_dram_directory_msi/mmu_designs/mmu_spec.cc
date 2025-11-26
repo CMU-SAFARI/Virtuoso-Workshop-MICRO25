@@ -442,7 +442,7 @@ namespace ParametricDramDirectoryMSI
         else
             tlbs = tlb_subsystem->getDataPath();
 
-        std::map<int, vector<tuple<IntPtr, int>>> evicted_translations;
+        std::map<int, vector<tuple<IntPtr, int, IntPtr>>> evicted_translations;
 
         // We need to allocate the entry in every "allocate on miss" TLB
 
@@ -465,7 +465,7 @@ namespace ParametricDramDirectoryMSI
                 // We need to check if there are any evicted translations from the previous level and allocate them
                 if ((i > 0) && (evicted_translations[i - 1].size() != 0))
                 {
-                    tuple<bool, IntPtr, int> result;
+                    auto result = std::make_tuple(false, IntPtr(0), 0, IntPtr(0));
 
 #ifdef DEBUG_MMU
                     log_file << "[MMU] There are evicted translations from level: " << i - 1 << std::endl;
@@ -477,20 +477,22 @@ namespace ParametricDramDirectoryMSI
                         log_file << "[MMU] Evicted Translation: " << get<0>(evicted_translations[i - 1][k]) << std::endl;
 #endif
                         // We need to check if the TLB supports the page size of the evicted translation
-                        if (tlbs[i][j]->supportsPageSize(page_size))
+                        int evicted_page_size = get<1>(evicted_translations[i - 1][k]);
+                        IntPtr evicted_ppn = get<2>(evicted_translations[i - 1][k]);
+                        if (tlbs[i][j]->supportsPageSize(evicted_page_size))
                         {
 #ifdef DEBUG_MMU
                             log_file << "[MMU] Allocating evicted entry in TLB: Level = " << i << " Index =  " << j << std::endl;
 #endif
 
-                            result = tlbs[i][j]->allocate(get<0>(evicted_translations[i - 1][k]), time, count, lock, get<1>(evicted_translations[i - 1][k]), ppn_result);
+                            result = tlbs[i][j]->allocate(get<0>(evicted_translations[i - 1][k]), time, count, lock, evicted_page_size, evicted_ppn);
 
                             // If the allocation was successful and we have an evicted translation,
                             // we need to add it to the evicted translations vector for
 
                             if (get<0>(result) == true)
                             {
-                                evicted_translations[i].push_back(make_tuple(get<1>(result), get<2>(result)));
+                                evicted_translations[i].push_back(make_tuple(get<1>(result), get<2>(result), get<3>(result)));
                             }
                         }
                     }
@@ -508,12 +510,10 @@ namespace ParametricDramDirectoryMSI
                     log_file << "[MMU] " << tlbs[i][j]->getName() << " supports page size: " << page_size << std::endl;
                     log_file << "[MMU] Allocating in TLB: Level = " << i << " Index = " << j << " with page size: " << page_size << " and VPN: " << (address >> page_size) << std::endl;
 #endif
-                    tuple<bool, IntPtr, int> result;
-
-                    result = tlbs[i][j]->allocate(address, time, count, lock, page_size, ppn_result);
+                    auto result = tlbs[i][j]->allocate(address, time, count, lock, page_size, ppn_result);
                     if (get<0>(result) == true)
                     {
-                        evicted_translations[i].push_back(make_tuple(get<1>(result), get<2>(result)));
+                        evicted_translations[i].push_back(make_tuple(get<1>(result), get<2>(result), get<3>(result)));
                     }
                 }
             }
